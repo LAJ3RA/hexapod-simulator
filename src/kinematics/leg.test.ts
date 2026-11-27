@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LEG as leg } from './defaultLeg';
+import { ROBOT } from '../config/robot';
 import { forwardKinematics, inverseKinematics, type Vec3 } from './leg';
 import { degToRad } from './math';
 
+const leg = ROBOT.leg;
 const C = leg.coxaLength;
 const F = leg.femurLength;
 const T = leg.tibiaLength;

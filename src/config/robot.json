@@ -1,0 +1,33 @@
+{
+  "name": "Hexapod (Julian)",
+  "comment": "Längen in mm, Winkel in Grad. Koordinaten: X = vorne, Y = links, Z = oben, Ursprung = Körpermitte auf Höhe der Gelenkachsen.",
+  "leg": {
+    "coxa": 42.8,
+    "femur": 121.0,
+    "tibia": 181.0,
+    "limits": {
+      "coxa": [-60, 60],
+      "femur": [-90, 90],
+      "tibia": [-160, 0]
+    }
+  },
+  "legs": [
+    { "id": 1, "name": "vorne rechts", "mount": [55.3, -40.8, 0], "angle": -45 },
+    { "id": 2, "name": "vorne links", "mount": [55.3, 40.8, 0], "angle": 45 },
+    { "id": 3, "name": "mitte links", "mount": [0, 55.1, 0], "angle": 90 },
+    { "id": 4, "name": "hinten links", "mount": [-55.3, 40.8, 0], "angle": 135 },
+    { "id": 5, "name": "hinten rechts", "mount": [-55.3, -40.8, 0], "angle": -135 },
+    { "id": 6, "name": "mitte rechts", "mount": [0, -55.1, 0], "angle": -90 }
+  ],
+  "body": {
+    "thickness": 44,
+    "outline": [
+      [70, -28], [70, 28], [48, 61], [-48, 61],
+      [-70, 28], [-70, -28], [-48, -61], [48, -61]
+    ]
+  },
+  "stance": {
+    "footDistance": 170,
+    "bodyHeight": 130
+  }
+}

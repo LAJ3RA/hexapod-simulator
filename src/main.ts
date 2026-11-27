@@ -2,73 +2,104 @@ import './style.css';
 import * as THREE from 'three';
 import GUI from 'lil-gui';
 import { createScene } from './scene/createScene';
-import { LegView } from './scene/legView';
-import { DEFAULT_LEG } from './kinematics/defaultLeg';
-import { inverseKinematics } from './kinematics/leg';
-import { radToDeg } from './kinematics/math';
+import { RobotView } from './scene/robotView';
+import { ROBOT } from './config/robot';
+import { neutralFeet, neutralPose, solveRobot, type BodyPose } from './kinematics/robot';
+import { degToRad, radToDeg } from './kinematics/math';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('#app nicht gefunden');
 
 const { scene, camera, renderer, controls } = createScene(app);
+camera.position.set(-550, -600, 420);
+controls.target.set(0, 0, 80);
+controls.update();
 
-// Bein auf einem "Sockel" 120 mm über dem Boden
-const MOUNT_HEIGHT = 120;
-const leg = new LegView(DEFAULT_LEG);
-leg.root.position.z = MOUNT_HEIGHT;
-scene.add(leg.root);
+// Roboter
+const robot = new RobotView(ROBOT);
+scene.add(robot.root);
 
-const pedestal = new THREE.Mesh(
-  new THREE.BoxGeometry(40, 40, MOUNT_HEIGHT),
-  new THREE.MeshStandardMaterial({ color: 0x334155 }),
-);
-pedestal.position.set(-20, 0, MOUNT_HEIGHT / 2);
-scene.add(pedestal);
+// Füße stehen fest auf dem Boden (Welt-Koordinaten)
+const feet = neutralFeet(ROBOT);
+const footMarkers = feet.map((f) => {
+  const m = new THREE.Mesh(
+    new THREE.CircleGeometry(10, 24),
+    new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.6 }),
+  );
+  m.position.set(f.x, f.y, 0.5); // knapp über dem Raster
+  scene.add(m);
+  return m;
+});
 
-// Zielpunkt (relativ zur Coxa-Achse, in mm)
-const target = { x: 150, y: 0, z: -90 };
-const targetMarker = new THREE.Mesh(
-  new THREE.SphereGeometry(8, 16, 12),
-  new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.5 }),
-);
-scene.add(targetMarker);
-
-// Anzeige-Werte für das Panel
-const readout = { coxa: '', femur: '', tibia: '', status: '' };
+// Schieberegler arbeiten in Grad, die Kinematik in Bogenmaß
+const neutral = neutralPose(ROBOT);
+const ui = { x: 0, y: 0, z: neutral.z, roll: 0, pitch: 0, yaw: 0 };
+const readout = { status: '', angles: ROBOT.mounts.map(() => '') };
 
 function update() {
-  const result = inverseKinematics(DEFAULT_LEG, target);
-  leg.setAngles(result.angles);
+  const pose: BodyPose = {
+    x: ui.x,
+    y: ui.y,
+    z: ui.z,
+    roll: degToRad(ui.roll),
+    pitch: degToRad(ui.pitch),
+    yaw: degToRad(ui.yaw),
+  };
+  robot.setPose(pose);
 
-  targetMarker.position.set(target.x, target.y, target.z + MOUNT_HEIGHT);
+  const results = solveRobot(ROBOT, pose, feet);
+  const problems: string[] = [];
 
-  readout.coxa = `${radToDeg(result.angles.coxa).toFixed(1)}°`;
-  readout.femur = `${radToDeg(result.angles.femur).toFixed(1)}°`;
-  readout.tibia = `${radToDeg(result.angles.tibia).toFixed(1)}°`;
+  results.forEach((r, i) => {
+    robot.setLegAngles(i, r.angles);
 
-  let color = 0x22c55e; // grün = alles ok
-  if (!result.reachable) {
-    readout.status = 'Außer Reichweite';
-    color = 0xef4444; // rot
-  } else if (result.limitViolations.length > 0) {
-    readout.status = `Grenze: ${result.limitViolations.join(', ')}`;
-    color = 0xf59e0b; // orange
-  } else {
-    readout.status = 'OK';
-  }
-  (targetMarker.material as THREE.MeshBasicMaterial).color.setHex(color);
+    const a = r.angles;
+    readout.angles[i] =
+      `${radToDeg(a.coxa).toFixed(0)}° / ${radToDeg(a.femur).toFixed(0)}° / ${radToDeg(a.tibia).toFixed(0)}°`;
+
+    let color = 0x22c55e;
+    if (!r.reachable) {
+      color = 0xef4444;
+      problems.push(`B${ROBOT.mounts[i].id}: Reichweite`);
+    } else if (r.limitViolations.length > 0) {
+      color = 0xf59e0b;
+      problems.push(`B${ROBOT.mounts[i].id}: ${r.limitViolations.join('+')}`);
+    }
+    (footMarkers[i].material as THREE.MeshBasicMaterial).color.setHex(color);
+  });
+
+  readout.status = problems.length === 0 ? 'OK' : problems.join(', ');
 }
 
-// Bedienpanel oben rechts
-const gui = new GUI({ title: 'Bein – Fußposition (mm)' });
-gui.add(target, 'x', -50, 280, 1).onChange(update);
-gui.add(target, 'y', -200, 200, 1).onChange(update);
-gui.add(target, 'z', -200, 150, 1).onChange(update);
-const anglesFolder = gui.addFolder('Winkel');
-anglesFolder.add(readout, 'coxa').listen().disable();
-anglesFolder.add(readout, 'femur').listen().disable();
-anglesFolder.add(readout, 'tibia').listen().disable();
+// Bedienpanel
+const gui = new GUI({ title: ROBOT.name });
+const bodyFolder = gui.addFolder('Körperhaltung');
+bodyFolder.add(ui, 'x', -80, 80, 1).name('vor/zurück (mm)').onChange(update);
+bodyFolder.add(ui, 'y', -80, 80, 1).name('links/rechts (mm)').onChange(update);
+bodyFolder.add(ui, 'z', 30, 280, 1).name('Höhe (mm)').onChange(update);
+bodyFolder.add(ui, 'roll', -30, 30, 0.5).name('Roll (°)').onChange(update);
+bodyFolder.add(ui, 'pitch', -30, 30, 0.5).name('Nick (°)').onChange(update);
+bodyFolder.add(ui, 'yaw', -30, 30, 0.5).name('Gier (°)').onChange(update);
+bodyFolder
+  .add(
+    {
+      reset: () => {
+        Object.assign(ui, { x: 0, y: 0, z: neutral.z, roll: 0, pitch: 0, yaw: 0 });
+        bodyFolder.controllersRecursive().forEach((c) => c.updateDisplay());
+        update();
+      },
+    },
+    'reset',
+  )
+  .name('Zurücksetzen');
+
 gui.add(readout, 'status').name('Status').listen().disable();
+
+const anglesFolder = gui.addFolder('Winkel Coxa / Femur / Tibia');
+ROBOT.mounts.forEach((m, i) => {
+  anglesFolder.add(readout.angles, i).name(`${m.id} ${m.name}`).listen().disable();
+});
+anglesFolder.close();
 
 update();
 
